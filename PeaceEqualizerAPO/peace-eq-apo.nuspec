@@ -16,5 +16,8 @@
     <bugTrackerUrl>https://sourceforge.net/p/peace-equalizer-apo-extension/tickets/</bugTrackerUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <iconUrl>https://raw.githubusercontent.com/kronflux/ChocolateyPackages/main/PeaceEqualizerAPO/peace-eq.png</iconUrl>
+    <dependencies>
+      <dependency id="equalizerapo" version="1.2" />
+    </dependencies>
   </metadata>
 </package>
