@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>peace-eq-apo</id>
+    <title>Peace Equalizer for Equalizer APO</title>
+    <version>1.6.4.1</version>
+    <authors>peverbeek</authors>
+    <owners>kronflux</owners>
+    <summary>Peace equalizer is a Windows PC interface for Equalizer APO.</summary>
+    <description>Peace equalizer is a Windows PC interface for Equalizer APO. Besides an system-wide audio equalizer on your Windows PC, Peace has an effects panel for balance, crossfeeding, delay, etc., a graph window and much more.</description>
+    <projectUrl>https://sourceforge.net/projects/peace-equalizer-apo-extension/</projectUrl>
+    <projectSourceUrl>https://sourceforge.net/projects/peace-equalizer-apo-extension/files/Source%20code/</projectSourceUrl>
+    <packageSourceUrl>https://github.com/kronflux/ChocolateyPackages/tree/main/PeaceEqualizerAPO</packageSourceUrl>
+    <tags>peace eq equalizer apo</tags>
+    <docsUrl>https://sourceforge.net/p/peace-equalizer-apo-extension/wiki/Home/</docsUrl>
+    <bugTrackerUrl>https://sourceforge.net/p/peace-equalizer-apo-extension/tickets/</bugTrackerUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <iconUrl>https://raw.githubusercontent.com/kronflux/ChocolateyPackages/main/PeaceEqualizerAPO/peace-eq.png</iconUrl>
+  </metadata>
+</package>
