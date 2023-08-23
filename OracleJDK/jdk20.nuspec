@@ -16,6 +16,6 @@
     <docsUrl>https://docs.oracle.com/en/java/javase/index.html</docsUrl>
     <bugTrackerUrl>https://bugreport.java.com/bugreport/</bugTrackerUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <iconUrl>https://raw.githubusercontent.com/kronflux/ChocolateyPackages/main/OracleJDK/jdk20.png</iconUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/kronflux/ChocolateyPackages@main/OracleJDK/jdk20.png</iconUrl>
   </metadata>
 </package>
