@@ -1,0 +1,109 @@
+name: Update Oracle JDK
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'  # weekly
+  workflow_dispatch:
+
+jobs:
+  update-oraclejdk:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Get latest LTS Oracle JDK
+        id: get_version
+        shell: pwsh
+        run: |
+          $currentReleasesUrl = 'https://java.oraclecloud.com/currentJavaReleases'
+          $currentReleases = Invoke-RestMethod -Uri $currentReleasesUrl -UseBasicParsing -ErrorAction Stop
+
+          $latestLts = $currentReleases.items |
+              Where-Object { $_.artifactContentTypes -contains 'JDK' -and $_.jdkDetails.isLts -eq $true } |
+              Sort-Object { [int]$_.jdkDetails.jdkVersion } -Descending |
+              Select-Object -First 1
+
+          if (-not $latestLts) { throw "No LTS release found" }
+
+          $releaseVersion = $latestLts.releaseVersion
+
+          $releaseDetailUrl = "https://java.oraclecloud.com/javaReleases/$releaseVersion"
+          $releaseDetail = Invoke-RestMethod -Uri $releaseDetailUrl -UseBasicParsing -ErrorAction Stop
+
+          $windowsMSI = $releaseDetail.artifacts |
+              Where-Object { $_.osFamily -eq 'windows' -and $_.architecture -eq 'x64' -and $_.packageType -eq 'msi' } |
+              Select-Object -First 1
+
+          if (-not $windowsMSI) { throw "No Windows x64 MSI found for release $releaseVersion" }
+
+          $msiUrl = $windowsMSI.downloadUrl
+          $checksumUrl = $windowsMSI.checksumUrl
+
+          $checksum = $null
+          try {
+              $chkResp = Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing -TimeoutSec 15
+              $checksum = ($chkResp.Content -split '\s+')[0]
+          } catch {
+              Write-Warning "Failed to fetch checksum from $checksumUrl"
+          }
+
+          echo "version=$releaseVersion" >> $env:GITHUB_OUTPUT
+          echo "url=$msiUrl" >> $env:GITHUB_OUTPUT
+          echo "checksum=$checksum" >> $env:GITHUB_OUTPUT
+
+      - name: Download latest JDK MSI
+        shell: pwsh
+        run: |
+          $url = '${{ steps.get_version.outputs.url }}'
+          Invoke-WebRequest -Uri $url -OutFile "jdk-latest.msi"
+
+      - name: Compute SHA256 if missing
+        id: compute_sha
+        shell: pwsh
+        run: |
+          $checksum = '${{ steps.get_version.outputs.checksum }}'
+          if (-not $checksum) {
+              $hash = Get-FileHash -Path "jdk-latest.msi" -Algorithm SHA256
+              $checksum = $hash.Hash
+          }
+          echo "sha256=$checksum" >> $env:GITHUB_OUTPUT
+
+      - name: Update chocolateyInstall.ps1
+        shell: pwsh
+        run: |
+          $psFile = 'OracleJDK/tools/chocolateyinstall.ps1'
+          $content = Get-Content $psFile -Raw
+          $content = $content -replace "(?<=Url64bit\s+=\s+').+?(?=')", '${{ steps.get_version.outputs.url }}'
+          $content = $content -replace "(?<=Checksum64\s+=\s+').+?(?=')", '${{ steps.compute_sha.outputs.sha256 }}'
+          $content | Set-Content $psFile
+
+      - name: Update .nuspec version and description
+        shell: pwsh
+        run: |
+          $nuspec = 'OracleJDK/OracleJDK.nuspec'
+          $version = '${{ steps.get_version.outputs.version }}'
+
+          $content = Get-Content $nuspec -Raw
+          $content = $content -replace "(?<=<version>).*?(?=</version>)", $version
+          $desc = "Oracle JDK $version is the latest Long-Term Support (LTS) release of the Java SE Platform."
+          $content = $content -replace "(?<=<description>).*?(?=</description>)", [System.Text.RegularExpressions.Regex]::Escape($desc)
+          $content | Set-Content $nuspec
+
+      - name: Commit & Push changes if updated
+        shell: pwsh
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add OracleJDK/tools/chocolateyinstall.ps1 OracleJDK/OracleJDK.nuspec
+
+          $changes = git status --porcelain
+          if ($changes) {
+              git commit -m "Update Oracle JDK to $(${{ steps.get_version.outputs.version }})"
+              git push
+              Write-Host "Changes detected and pushed."
+          } else {
+              Write-Host "No changes detected. Nothing to commit."
+          }
