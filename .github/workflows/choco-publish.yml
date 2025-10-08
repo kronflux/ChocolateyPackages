@@ -1,0 +1,202 @@
+name: Update & Publish Chocolatey Packages
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'  # weekly update
+  workflow_dispatch:
+  push:
+    paths:
+      - 'OracleJDK/*.nuspec'
+      - 'PeaceEqualizerAPO/*.nuspec'
+
+jobs:
+  update-and-publish:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ----------------------------
+      # --- ORACLE JDK UPDATE STEP --
+      # ----------------------------
+      - name: Get latest LTS Oracle JDK
+        id: get_oracle_version
+        shell: pwsh
+        run: |
+          $currentReleasesUrl = 'https://java.oraclecloud.com/currentJavaReleases'
+          $currentReleases = Invoke-RestMethod -Uri $currentReleasesUrl -UseBasicParsing -ErrorAction Stop
+
+          $latestLts = $currentReleases.items |
+              Where-Object { $_.artifactContentTypes -contains 'JDK' -and $_.jdkDetails.isLts -eq $true } |
+              Sort-Object { [int]$_.jdkDetails.jdkVersion } -Descending |
+              Select-Object -First 1
+
+          if (-not $latestLts) { throw "No LTS release found" }
+
+          $releaseVersion = $latestLts.releaseVersion
+          $releaseDetailUrl = "https://java.oraclecloud.com/javaReleases/$releaseVersion"
+          $releaseDetail = Invoke-RestMethod -Uri $releaseDetailUrl -UseBasicParsing -ErrorAction Stop
+
+          $windowsMSI = $releaseDetail.artifacts |
+              Where-Object { $_.osFamily -eq 'windows' -and $_.architecture -eq 'x64' -and $_.packageType -eq 'msi' } |
+              Select-Object -First 1
+
+          if (-not $windowsMSI) { throw "No Windows x64 MSI found for release $releaseVersion" }
+
+          $msiUrl = $windowsMSI.downloadUrl
+          $checksumUrl = $windowsMSI.checksumUrl
+
+          $checksum = $null
+          try {
+              $chkResp = Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing -TimeoutSec 15
+              $checksum = ($chkResp.Content -split '\s+')[0]
+          } catch {
+              Write-Warning "Failed to fetch checksum from $checksumUrl"
+          }
+
+          echo "version=$releaseVersion" >> $env:GITHUB_OUTPUT
+          echo "url=$msiUrl" >> $env:GITHUB_OUTPUT
+          echo "checksum=$checksum" >> $env:GITHUB_OUTPUT
+
+      - name: Download Oracle JDK MSI
+        shell: pwsh
+        run: |
+          $url = '${{ steps.get_oracle_version.outputs.url }}'
+          Invoke-WebRequest -Uri $url -OutFile "jdk-latest.msi"
+
+      - name: Compute SHA256 for Oracle JDK
+        id: compute_oracle_sha
+        shell: pwsh
+        run: |
+          $checksum = '${{ steps.get_oracle_version.outputs.checksum }}'
+          if (-not $checksum) {
+              $hash = Get-FileHash -Path "jdk-latest.msi" -Algorithm SHA256
+              $checksum = $hash.Hash.ToLower()
+          }
+          echo "sha256=$checksum" >> $env:GITHUB_OUTPUT
+
+      - name: Update OracleJDK chocolateyinstall.ps1
+        shell: pwsh
+        run: |
+          $psFile = 'OracleJDK/tools/chocolateyinstall.ps1'
+          $content = Get-Content $psFile -Raw
+          $content = $content -replace "(?<=Url64bit\s+=\s+').+?(?=')", '${{ steps.get_oracle_version.outputs.url }}'
+          $content = $content -replace "(?<=Checksum64\s+=\s+').+?(?=')", '${{ steps.compute_oracle_sha.outputs.sha256 }}'
+          $content | Set-Content $psFile
+
+      - name: Update OracleJDK .nuspec
+        shell: pwsh
+        run: |
+          $nuspec = 'OracleJDK/OracleJDK.nuspec'
+          $version = '${{ steps.get_oracle_version.outputs.version }}'
+          $content = Get-Content $nuspec -Raw
+          $content = $content -replace "(?<=<version>).*?(?=</version>)", $version
+          $desc = "Oracle JDK $version is the latest Long-Term Support (LTS) release of the Java SE Platform."
+          $content = $content -replace "(?<=<description>).*?(?=</description>)", [System.Text.RegularExpressions.Regex]::Escape($desc)
+          $content | Set-Content $nuspec
+
+      # ----------------------------
+      # --- PEACE EQUALIZER UPDATE ---
+      # ----------------------------
+      - name: Get latest PeaceSetup.exe version
+        id: get_peace_version
+        shell: pwsh
+        run: |
+          $readmeUrl = 'https://master.dl.sourceforge.net/project/peace-equalizer-apo-extension/Readme.md?viasf=1'
+          $readmeContent = Invoke-RestMethod -Uri $readmeUrl
+          $versionMatch = [regex]::Match($readmeContent, 'Version (\d+\.\d+\.\d+\.\d+)')
+          if (-not $versionMatch.Success) { throw "Could not find version in Readme" }
+          $version = $versionMatch.Groups[1].Value
+
+          $rss = Invoke-RestMethod 'https://sourceforge.net/projects/peace-equalizer-apo-extension/rss'
+          $rssItems = @($rss)
+          $exeItem = $rssItems | Where-Object { $_.link -like '*PeaceSetup.exe/download' } | Select-Object -First 1
+          if (-not $exeItem) { throw "PeaceSetup.exe not found in RSS feed" }
+          $url = $exeItem.link
+
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "url=$url" >> $env:GITHUB_OUTPUT
+
+      - name: Download PeaceSetup.exe
+        shell: pwsh
+        run: |
+          $url = '${{ steps.get_peace_version.outputs.url }}'
+          $outfile = "PeaceSetup-latest.exe"
+          Write-Host "Downloading PeaceSetup.exe from: $url"
+          Invoke-WebRequest -Uri $url -OutFile $outfile -UserAgent "Wget" -MaximumRedirection 10 -Verbose
+          $sizeKB = (Get-Item $outfile).Length / 1KB
+          if ($sizeKB -lt 5000) { throw "Downloaded file is suspiciously small (~$([Math]::Round($sizeKB,2)) KB)." }
+
+      - name: Compute SHA256 for Peace Equalizer
+        id: compute_peace_sha
+        shell: pwsh
+        run: |
+          $hash = Get-FileHash -Path "PeaceSetup-latest.exe" -Algorithm SHA256
+          echo "sha256=$($hash.Hash.ToLower())" >> $env:GITHUB_OUTPUT
+
+      - name: Update PeaceEqualizerAPO chocolateyinstall.ps1
+        shell: pwsh
+        run: |
+          $psFile = 'PeaceEqualizerAPO/tools/chocolateyinstall.ps1'
+          $content = Get-Content $psFile -Raw
+          $content = $content -replace "(?<=Url64bit\s+=\s+').+?(?=')", '${{ steps.get_peace_version.outputs.url }}'
+          $content = $content -replace "(?<=Checksum64\s+=\s+').+?(?=')", '${{ steps.compute_peace_sha.outputs.sha256 }}'
+          $content | Set-Content $psFile
+
+      - name: Update PeaceEqualizerAPO .nuspec
+        shell: pwsh
+        run: |
+          $nuspec = 'PeaceEqualizerAPO/peace-eq-apo.nuspec'
+          $version = '${{ steps.get_peace_version.outputs.version }}'
+          $content = Get-Content $nuspec -Raw
+          $content = $content -replace "(?<=<version>).*?(?=</version>)", $version
+          $content | Set-Content $nuspec
+
+      # ----------------------------
+      # --- COMMIT CHANGES IF ANY ---
+      # ----------------------------
+      - name: Commit & Push updates
+        shell: pwsh
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add OracleJDK/tools/chocolateyinstall.ps1 OracleJDK/OracleJDK.nuspec `
+                  PeaceEqualizerAPO/tools/chocolateyinstall.ps1 PeaceEqualizerAPO/peace-eq-apo.nuspec
+          $changes = git status --porcelain
+          if ($changes) {
+              git commit -m "Update packages: OracleJDK $(${{ steps.get_oracle_version.outputs.version }}), PeaceEqualizerAPO $(${{ steps.get_peace_version.outputs.version }})"
+              git push
+          }
+
+      # ----------------------------
+      # --- CREATE RELEASE & PUBLISH ---
+      # ----------------------------
+      - name: Create GitHub Releases
+        shell: pwsh
+        run: |
+          # OracleJDK release
+          $versionOracle = '${{ steps.get_oracle_version.outputs.version }}'
+          gh release create "OracleJDK-v$versionOracle" --title "Oracle JDK $versionOracle" --notes "Automated update for Oracle JDK $versionOracle" --repo $GITHUB_REPOSITORY || Write-Host "Release already exists"
+
+          # PeaceEqualizerAPO release
+          $versionPeace = '${{ steps.get_peace_version.outputs.version }}'
+          gh release create "PeaceEqualizerAPO-v$versionPeace" --title "Peace Equalizer APO $versionPeace" --notes "Automated update for Peace Equalizer APO $versionPeace" --repo $GITHUB_REPOSITORY || Write-Host "Release already exists"
+
+      - name: Publish OracleJDK to Chocolatey
+        shell: pwsh
+        env:
+          CHOCO_TOKEN: ${{ secrets.CHOCO_TOKEN }}
+        run: |
+          choco pack OracleJDK/oraclejdk.nuspec
+          $nupkg = Get-ChildItem *.nupkg | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          choco push $nupkg.FullName --api-key $env:CHOCO_TOKEN --source https://push.chocolatey.org/
+
+      - name: Publish PeaceEqualizerAPO to Chocolatey
+        shell: pwsh
+        env:
+          CHOCO_TOKEN: ${{ secrets.CHOCO_TOKEN }}
+        run: |
+          choco pack PeaceEqualizerAPO/peace-eq-apo.nuspec
+          $nupkg = Get-ChildItem *.nupkg | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          choco push $nupkg.FullName --api-key $env:CHOCO_TOKEN --source https://push.chocolatey.org/
