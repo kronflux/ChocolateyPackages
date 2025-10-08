@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
   <metadata>
-    <id>oraclejdk</id>
+    <id>oraclejdklts</id>
     <title>Oracle JDK 25</title>
     <version>25.0.0</version>
     <authors>Oracle</authors>
@@ -16,6 +16,6 @@
     <docsUrl>https://docs.oracle.com/en/java/javase/index.html</docsUrl>
     <bugTrackerUrl>https://bugreport.java.com/bugreport/</bugTrackerUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <iconUrl>https://cdn.jsdelivr.net/gh/kronflux/ChocolateyPackages@main/OracleJDK/oraclejdk.png</iconUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/kronflux/ChocolateyPackages@main/OracleJDK/oraclejdklts.png</iconUrl>
   </metadata>
 </package>
