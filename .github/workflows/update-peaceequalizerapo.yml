@@ -1,0 +1,84 @@
+name: Update Peace Equalizer APO
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'  # weekly
+  workflow_dispatch:
+
+jobs:
+  update-peace-eq-apo:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Get latest PeaceSetup.exe version from Readme
+        id: get_version
+        shell: pwsh
+        run: |
+          $readmeUrl = 'https://master.dl.sourceforge.net/project/peace-equalizer-apo-extension/Readme.md?viasf=1'
+          $readmeContent = Invoke-RestMethod -Uri $readmeUrl
+
+          # Match "Version X.X.X.X" from the Readme; assumes latest version appears first
+          $versionMatch = [regex]::Match($readmeContent, 'Version (\d+\.\d+\.\d+\.\d+)')
+          if (-not $versionMatch.Success) { throw "Could not find version in Readme" }
+          $version = $versionMatch.Groups[1].Value
+          
+          # RSS feed to get download URL
+          $rss = Invoke-RestMethod 'https://sourceforge.net/projects/peace-equalizer-apo-extension/rss'
+          $exeItem = $rss.rss.channel.item | Where-Object { $_.title -eq '/PeaceSetup.exe' } | Select-Object -First 1
+          if (-not $exeItem) { throw "PeaceSetup.exe not found in RSS feed" }
+          $url = $exeItem.link
+
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "url=$url" >> $env:GITHUB_OUTPUT
+
+      - name: Download latest PeaceSetup.exe
+        shell: pwsh
+        run: |
+          $url = '${{ steps.get_version.outputs.url }}'
+          $outfile = "PeaceSetup-latest.exe"
+          Invoke-WebRequest -Uri $url -OutFile $outfile
+
+      - name: Compute SHA256
+        id: compute_sha
+        shell: pwsh
+        run: |
+          $hash = Get-FileHash -Path "PeaceSetup-latest.exe" -Algorithm SHA256
+          echo "sha256=$($hash.Hash)" >> $env:GITHUB_OUTPUT
+
+      - name: Update chocolateyInstall.ps1
+        shell: pwsh
+        run: |
+          $psFile = 'PeaceEqualizerAPO/tools/chocolateyInstall.ps1'
+          $content = Get-Content $psFile -Raw
+          $content = $content -replace "(?<=Url64bit\s+=\s+').+?(?=')", '${{ steps.get_version.outputs.url }}'
+          $content = $content -replace "(?<=Checksum64\s+=\s+').+?(?=')", '${{ steps.compute_sha.outputs.sha256 }}'
+          $content | Set-Content $psFile
+
+      - name: Update .nuspec version
+        shell: pwsh
+        run: |
+          $nuspec = 'PeaceEqualizerAPO/peace-eq-apo.nuspec'
+          $version = '${{ steps.get_version.outputs.version }}'
+          $content = Get-Content $nuspec -Raw
+          $content = $content -replace "(?<=<version>).*?(?=</version>)", $version
+          $content | Set-Content $nuspec
+
+      - name: Commit & Push changes if updated
+        shell: pwsh
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add PeaceEqualizerAPO/tools/chocolateyInstall.ps1 PeaceEqualizerAPO/peace-eq-apo.nuspec
+
+          $changes = git status --porcelain
+          if ($changes) {
+              git commit -m "Update Peace Equalizer APO to $(${{ steps.get_version.outputs.version }})"
+              git push
+              Write-Host "Changes detected and pushed."
+          } else {
+              Write-Host "No changes detected. Nothing to commit."
+          }

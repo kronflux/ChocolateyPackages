@@ -3,7 +3,7 @@
   <metadata>
     <id>peace-eq-apo</id>
     <title>Peace Equalizer for Equalizer APO</title>
-    <version>1.6.4.1</version>
+    <version>1.6.8.10</version>
     <authors>peverbeek</authors>
     <owners>kronflux</owners>
     <summary>Peace equalizer is a Windows PC interface for Equalizer APO.</summary>
@@ -17,7 +17,7 @@
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <iconUrl>https://cdn.jsdelivr.net/gh/kronflux/ChocolateyPackages@main/PeaceEqualizerAPO/peace-eq.png</iconUrl>
     <dependencies>
-      <dependency id="equalizerapo" version="1.2" />
+      <dependency id="equalizerapo" />
     </dependencies>
   </metadata>
 </package>
