@@ -17,17 +17,18 @@ jobs:
         id: get_version
         shell: pwsh
         run: |
+          # Fetch Readme for version
           $readmeUrl = 'https://master.dl.sourceforge.net/project/peace-equalizer-apo-extension/Readme.md?viasf=1'
           $readmeContent = Invoke-RestMethod -Uri $readmeUrl
 
-          # Match "Version X.X.X.X" from the Readme; assumes latest version appears first
           $versionMatch = [regex]::Match($readmeContent, 'Version (\d+\.\d+\.\d+\.\d+)')
           if (-not $versionMatch.Success) { throw "Could not find version in Readme" }
           $version = $versionMatch.Groups[1].Value
-          
-          # RSS feed to get download URL
+
+          # Fetch RSS feed and get PeaceSetup.exe URL
           $rss = Invoke-RestMethod 'https://sourceforge.net/projects/peace-equalizer-apo-extension/rss'
-          $exeItem = $rss.rss.channel.item | Where-Object { $_.title -eq '/PeaceSetup.exe' } | Select-Object -First 1
+          $rssItems = @($rss)
+          $exeItem = $rssItems | Where-Object { $_.link -like '*PeaceSetup.exe/download' } | Select-Object -First 1
           if (-not $exeItem) { throw "PeaceSetup.exe not found in RSS feed" }
           $url = $exeItem.link
 
@@ -39,19 +40,25 @@ jobs:
         run: |
           $url = '${{ steps.get_version.outputs.url }}'
           $outfile = "PeaceSetup-latest.exe"
-          Invoke-WebRequest -Uri $url -OutFile $outfile
 
-      - name: Compute SHA256
+          Write-Host "Downloading PeaceSetup.exe from: $url"
+          Invoke-WebRequest -Uri $url -OutFile $outfile -UserAgent "Wget" -MaximumRedirection 10 -Verbose
+
+          # Verify file size
+          $sizeKB = (Get-Item $outfile).Length / 1KB
+          if ($sizeKB -lt 5000) { throw "Downloaded file is suspiciously small (~$([Math]::Round($sizeKB,2)) KB). Likely not the real installer." }
+
+      - name: Compute SHA256 (lowercase)
         id: compute_sha
         shell: pwsh
         run: |
           $hash = Get-FileHash -Path "PeaceSetup-latest.exe" -Algorithm SHA256
-          echo "sha256=$($hash.Hash)" >> $env:GITHUB_OUTPUT
+          echo "sha256=$($hash.Hash.ToLower())" >> $env:GITHUB_OUTPUT
 
-      - name: Update chocolateyInstall.ps1
+      - name: Update chocolateyinstall.ps1
         shell: pwsh
         run: |
-          $psFile = 'PeaceEqualizerAPO/tools/chocolateyInstall.ps1'
+          $psFile = 'PeaceEqualizerAPO/tools/chocolateyinstall.ps1'
           $content = Get-Content $psFile -Raw
           $content = $content -replace "(?<=Url64bit\s+=\s+').+?(?=')", '${{ steps.get_version.outputs.url }}'
           $content = $content -replace "(?<=Checksum64\s+=\s+').+?(?=')", '${{ steps.compute_sha.outputs.sha256 }}'
@@ -72,7 +79,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          git add PeaceEqualizerAPO/tools/chocolateyInstall.ps1 PeaceEqualizerAPO/peace-eq-apo.nuspec
+          git add PeaceEqualizerAPO/tools/chocolateyinstall.ps1 PeaceEqualizerAPO/peace-eq-apo.nuspec
 
           $changes = git status --porcelain
           if ($changes) {

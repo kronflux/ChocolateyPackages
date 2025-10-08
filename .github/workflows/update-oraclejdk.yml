@@ -70,7 +70,7 @@ jobs:
           }
           echo "sha256=$checksum" >> $env:GITHUB_OUTPUT
 
-      - name: Update chocolateyInstall.ps1
+      - name: Update chocolateyinstall.ps1
         shell: pwsh
         run: |
           $psFile = 'OracleJDK/tools/chocolateyinstall.ps1'
