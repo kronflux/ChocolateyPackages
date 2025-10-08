@@ -3,11 +3,11 @@
   <metadata>
     <id>oraclejdklts</id>
     <title>Oracle JDK 25</title>
-    <version>25.0.0</version>
+    <version>25</version>
     <authors>Oracle</authors>
     <owners>kronflux</owners>
     <summary>Oracle JDK is a distribution of OpenJDK provided by Oracle.</summary>
-    <description>Oracle JDK 25 is a distribution of OpenJDK provided by Oracle. It includes the latest features and improvements of the Java SE Platform.</description>
+    <description>Oracle\ JDK\ 25\ is\ the\ latest\ Long-Term\ Support\ \(LTS\)\ release\ of\ the\ Java\ SE\ Platform\.</description>
     <projectUrl>https://www.oracle.com/java/</projectUrl>
     <projectSourceUrl>https://github.com/openjdk/jdk</projectSourceUrl>
     <packageSourceUrl>https://github.com/kronflux/ChocolateyPackages/tree/main/OracleJDK</packageSourceUrl>
@@ -19,3 +19,5 @@
     <iconUrl>https://cdn.jsdelivr.net/gh/kronflux/ChocolateyPackages@main/OracleJDK/oraclejdklts.png</iconUrl>
   </metadata>
 </package>
+
+
